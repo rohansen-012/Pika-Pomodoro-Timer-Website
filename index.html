@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pika Pomodoro</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --accent:#6f2fa0;
+      --accent-dark:#5a2382;
+      --cream:#fbf2e1;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Montserrat, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial}
+    body{
+      --bg:'bg.jpg';
+      background-image: url('bg.jpg');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      display:flex;align-items:center;justify-content:center;color:var(--cream);
+    }
+
+    /* Top-left logo */
+    .logo{position:fixed;left:55px;top:1px;font-weight:800;letter-spacing:2px;background:none;padding:0;font-size:28px;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,0.6)}
+
+    /* main centered timer */
+    .center-wrap{display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center;padding:20px}
+    .timer{font-size:150px;font-weight:800;color:var(--cream);text-shadow:0 6px 20px rgba(0,0,0,0.45)}
+    @media (max-width:900px){.timer{font-size:72px}}
+    @media (max-width:600px){.timer{font-size:48px}}
+
+    .controls{display:flex;gap:14px;align-items:center}
+    .start-btn{background:linear-gradient(180deg,var(--accent),var(--accent-dark));border:none;color:white;padding:12px 32px;border-radius:22px;font-weight:700;font-size:18px;cursor:pointer;box-shadow:0 8px 20px rgba(111,47,160,0.28)}
+    .start-btn:active{transform:translateY(1px)}
+
+    /* settings card */
+    .settings{position:fixed;right:32px;top:40%;transform:translateY(-50%);background:rgba(255,255,255,0.06);backdrop-filter:blur(6px);padding:14px;border-radius:12px;color:#fff;min-width:240px}
+    .settings h3{margin:4px 0 10px 0;font-weight:600}
+    .field{display:flex;justify-content:space-between;align-items:center;margin:8px 0}
+    .field label{font-size:14px}
+    .field input[type=number]{width:84px;padding:6px;border-radius:8px;border:none;background:rgba(0,0,0,0.25);color:#fff;font-weight:700;text-align:center}
+    .bg-upload{display:flex;gap:8px;align-items:center;margin-top:12px}
+    .bg-upload input[type=file]{display:none}
+    .bg-upload label{background:rgba(255,255,255,0.07);padding:8px 10px;border-radius:8px;cursor:pointer}
+
+    /* cat bottom-left */
+    .cat-wrap{position:fixed;left:28px;bottom:18px;display:flex;align-items:flex-end;gap:12px}
+    /* simple pixel-cat made with SVG (developer-provided animated cat) */
+    .cat-svg{width:160px;height:160px;image-rendering:pixelated}
+
+    /* helper small hint */
+    .hint{position:fixed;left:28px;bottom:8px;font-size:12px;color:rgba(255,255,255,0.75)}
+
+    /* small bench placeholder overlay to keep look */
+    .bench-placeholder{position:fixed;left:150px;bottom:52px;opacity:0.9}
+
+  </style>
+</head>
+<body>
+  <div class="logo">
+  <img src="PIKA.png" alt="Logo" style="height:200px;">
+</div>
+
+  <div class="center-wrap">
+    <div id="display" class="timer">25:00</div>
+    <div class="controls">
+      <button id="startBtn" class="start-btn">Start</button>
+      <button id="pauseBtn" class="start-btn" style="background:rgba(255,255,255,0.12);color:#fff">Pause</button>
+      <button id="resetBtn" class="start-btn" style="background:rgba(255,255,255,0.12);color:#fff">Reset</button>
+    </div>
+  </div>
+
+  <aside class="settings" aria-label="settings">
+    <h3>Session Settings</h3>
+    <div class="field">
+      <label for="studyMin">Study (min)</label>
+      <input id="studyMin" type="number" min="1" max="180" value="25">
+    </div>
+    <div class="field">
+      <label for="restMin">Rest (min)</label>
+      <input id="restMin" type="number" min="1" max="60" value="5">
+    </div>
+
+    <div class="bg-upload">
+      <label for="bgFile">Change background</label>
+      <input id="bgFile" type="file" accept="image/*">
+    </div>
+
+    <p style="margin-top:10px;font-size:13px;opacity:0.9"></p>
+  </aside>
+
+  <!-- Developer provided cat animation (SVG) - the user does not import this. -->
+  <div class="cat-wrap" aria-hidden="true">
+    <img src="pika sleeping.gif" alt="Pika Sleeping" style="width:300px;height:auto;border-radius:12px;image-rendering:pixelated;">
+  </div>
+  </div>
+
+
+  <script>
+    // Core timer logic
+    const display = document.getElementById('display');
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const studyMinInput = document.getElementById('studyMin');
+    const restMinInput = document.getElementById('restMin');
+    const bgFile = document.getElementById('bgFile');
+
+    let studySec = Number(studyMinInput.value) * 60;
+    let restSec = Number(restMinInput.value) * 60;
+    let remaining = studySec;
+    let timerId = null;
+    let running = false;
+    let mode = 'study'; // or 'rest'
+
+    function formatTime(s){
+      const hrs = Math.floor(s/3600);
+      const mins = Math.floor((s%3600)/60);
+      const secs = s%60;
+      if(hrs>0) return `${hrs}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+      return `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+    }
+
+    function updateDisplay(){
+      display.textContent = formatTime(remaining);
+    }
+
+    function tick(){
+      if(remaining>0){
+        remaining -= 1;
+        updateDisplay();
+      } else {
+        // switch mode
+        if(mode === 'study'){
+          mode = 'rest';
+          remaining = restSec;
+          flash("Rest time — take a break!");
+        } else {
+          mode = 'study';
+          remaining = studySec;
+          flash("Back to study!");
+        }
+      }
+    }
+
+    function start(){
+      if(running) return;
+      running = true;
+      if(timerId) clearInterval(timerId);
+      timerId = setInterval(tick,1000);
+    }
+    function pause(){
+      running = false;
+      if(timerId) clearInterval(timerId);
+      timerId = null;
+    }
+    function reset(){
+      pause();
+      studySec = Number(studyMinInput.value) * 60;
+      restSec = Number(restMinInput.value) * 60;
+      mode = 'study';
+      remaining = studySec;
+      updateDisplay();
+    }
+
+    function flash(msg){
+      const old = display.textContent;
+      display.textContent = msg;
+      setTimeout(()=>{
+        updateDisplay();
+      },1800);
+    }
+
+    // wire buttons
+    startBtn.addEventListener('click', ()=>{
+      // when starting, read values from inputs (developer intended)
+      studySec = Math.max(1, Number(studyMinInput.value)) * 60;
+      restSec = Math.max(1, Number(restMinInput.value)) * 60;
+      if(!running) start();
+    });
+    pauseBtn.addEventListener('click', ()=>{ pause(); });
+    resetBtn.addEventListener('click', ()=>{ reset(); });
+
+    // update inputs while editing
+    studyMinInput.addEventListener('change', ()=>{ studySec = Number(studyMinInput.value)*60; if(mode==='study'){ remaining = studySec; updateDisplay(); } });
+    restMinInput.addEventListener('change', ()=>{ restSec = Number(restMinInput.value)*60; if(mode==='rest'){ remaining = restSec; updateDisplay(); } });
+
+    // background upload handling
+    bgFile.addEventListener('change', (e)=>{
+      const file = e.target.files[0];
+      if(!file) return;
+      const url = URL.createObjectURL(file);
+      document.body.style.backgroundImage = `url('${url}')`;
+    });
+
+    // initial state
+    reset();
+
+    // keyboard shortcuts
+    window.addEventListener('keydown', (e)=>{
+      if(e.key === ' '){ e.preventDefault(); if(running) pause(); else start(); }
+      if(e.key === 'r') reset();
+    });
+  </script>
+</body>
+</html>
